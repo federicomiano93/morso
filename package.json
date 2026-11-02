@@ -1,0 +1,12 @@
+{
+  "name": "morso",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Morso: personal food diary and workout log (PWA). Code only, no personal data.",
+  "scripts": {
+    "test": "node --test",
+    "icons": "node tools/make-icons.mjs"
+  },
+  "license": "UNLICENSED"
+}
