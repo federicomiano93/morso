@@ -208,9 +208,17 @@ function refreshPill() {
   app.pillEl.className = `pill ${cls}`;
 }
 
-function makeSync() {
+// One sync instance per token+repo, so its "already running" lock really works.
+let syncInstance = null;
+let syncKey = '';
+function currentSync() {
   const { repo } = store.getSettings();
-  return createSync({ store, github: createGitHub({ token: store.getToken(), repo }) });
+  const key = `${repo}|${store.getToken()}`;
+  if (key !== syncKey) {
+    syncInstance = createSync({ store, github: createGitHub({ token: store.getToken(), repo }) });
+    syncKey = key;
+  }
+  return syncInstance;
 }
 
 async function runSync({ manual = false } = {}) {
@@ -226,12 +234,14 @@ async function runSync({ manual = false } = {}) {
   }
   app.sync = { state: 'syncing', message: '' };
   refreshPill();
-  const r = await makeSync().run();
+  const r = await currentSync().run();
   if (!r) return; // another run was already in progress; it will pick up the changes
   app.sync = { state: r.state, message: r.message };
   refreshPill();
-  if (r.imported) toast(`Imported ${r.imported} ${r.imported === 1 ? 'entry' : 'entries'} from Claude.`);
-  else if (r.importErrors.length) toast(`Could not import: ${r.importErrors[0]}`, { ms: 8000 });
+  if (r.importErrors.length) {
+    const done = r.imported ? `Imported ${r.imported}, but ` : '';
+    toast(`${done}${r.importErrors.length} item(s) from Claude could not be imported (they stay in inbox/). First problem: ${r.importErrors[0]}`, { ms: 12000 });
+  } else if (r.imported) toast(`Imported ${r.imported} ${r.imported === 1 ? 'entry' : 'entries'} from Claude.`);
   else if (r.state !== 'ok' && manual) toast(r.message, { ms: 8000 });
   else if (manual) toast('Everything is synced.');
   if (r.imported || r.pulled) refreshHome();
@@ -402,7 +412,7 @@ SCREENS.add = ({ date, meal }) => {
   const foodButton = (f, extra) =>
     h('li', {},
       h('button', { type: 'button', class: 'row', onClick: () => go('amount', { food: f, date, meal }) },
-        h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, f.name), f.favourite ? h('span', { class: 'star', 'aria-label': 'favourite' }, '★') : null),
+        h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, f.name), f.favourite ? h('span', { class: 'star', role: 'img', 'aria-label': 'favourite' }, '★') : null),
         h('span', { class: 'row-meta' }, `${groupLabel(f.group)} · ${f.per100 && f.per100.kcal !== null ? Math.round(f.per100.kcal) : '?'} kcal/100 g${extra || ''}`),
       ),
     );
@@ -469,7 +479,9 @@ SCREENS.add = ({ date, meal }) => {
     controller = new AbortController();
     fill(online, h('p', { class: 'notice' }, 'Searching Open Food Facts…'));
     try {
-      const foods = await searchOff(q, { signal: controller.signal });
+      const savedById = new Map(visible(store.getLibrary().foods).map((f) => [f.id, f]));
+      // A product already in the library keeps the user's edits instead of a fresh draft.
+      const foods = (await searchOff(q, { signal: controller.signal })).map((f) => savedById.get(f.id) || f);
       fill(online, 
         foods.length
           ? section('Open Food Facts', foods.map((f) => foodButton(f, f.incomplete ? ' · incomplete' : '')))
@@ -589,6 +601,7 @@ SCREENS.amount = ({ food, date, meal }) => {
         type: 'button', class: 'btn', onClick: () => go('food', {
           food,
           onSaved: (s) => { app.stack.pop(); replaceTop('amount', { food: s, date, meal: currentMeal }); },
+          onDeleted: () => { app.date = date; finishToHome(); }, // the food is gone: do not return to a screen that would bring it back
         }),
       }, 'Edit food'),
       h('button', { type: 'button', class: 'btn', 'aria-pressed': (saved || food).favourite ? 'true' : 'false', onClick: toggleFav }, (saved || food).favourite ? '★ Favourite' : '☆ Make favourite'),
@@ -598,7 +611,7 @@ SCREENS.amount = ({ food, date, meal }) => {
 
 // ---------- FOOD FORM (create / edit) ----------
 
-SCREENS.food = ({ food, name = '', onSaved }) => {
+SCREENS.food = ({ food, name = '', onSaved, onDeleted }) => {
   const isNew = !food;
   const base = food || {
     id: newId(), name, group: '', per100: { kcal: null, protein: null, carbs: null, fat: null },
@@ -660,9 +673,12 @@ SCREENS.food = ({ food, name = '', onSaved }) => {
     if (!(await confirmDialog({ title: `Delete “${base.name}”?`, message: 'It disappears from your food list. Past diary entries are not changed.', confirmLabel: 'Delete', danger: true }))) return;
     store.putFood(tombstone(base));
     app.guard = null;
-    app.stack.pop();
-    render();
     toast('Food deleted.');
+    if (onDeleted) onDeleted();
+    else {
+      app.stack.pop();
+      render();
+    }
   }
 
   return h('div', { class: 'screen' },
@@ -807,7 +823,7 @@ SCREENS.foods = () => {
         foods.length
           ? h('ul', { class: 'list' }, foods.slice(0, 200).map((f) =>
               h('li', {}, h('button', { type: 'button', class: 'row', onClick: () => go('food', { food: f, onSaved: () => { app.stack.pop(); render(); } }) },
-                h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, f.name), f.favourite ? h('span', { class: 'star', 'aria-label': 'favourite' }, '★') : null),
+                h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, f.name), f.favourite ? h('span', { class: 'star', role: 'img', 'aria-label': 'favourite' }, '★') : null),
                 h('span', { class: 'row-meta' }, `${groupLabel(f.group)} · ${Math.round(f.per100.kcal)} kcal/100 g`)))))
           : h('p', { class: 'empty' }, 'No foods match.')),
     );

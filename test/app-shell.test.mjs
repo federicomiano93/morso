@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shellHash } from '../tools/shell-hash.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,4 +30,10 @@ test('index.html links only files that exist and sets a strict content security 
 test('the manifest icons exist', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'manifest.webmanifest'), 'utf8'));
   for (const icon of manifest.icons) assert.ok(existsSync(join(root, icon.src)), icon.src);
+});
+
+test('the service worker cache name matches the app files (run "npm run stamp" after changing any of them)', () => {
+  const sw = readFileSync(join(root, 'sw.js'), 'utf8');
+  const version = /const VERSION = '([^']*)';/.exec(sw)[1];
+  assert.equal(version, shellHash(root), 'sw.js VERSION is stale: run "npm run stamp"');
 });

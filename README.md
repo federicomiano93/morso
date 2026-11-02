@@ -10,7 +10,8 @@ the diary lives in the private repository `morso-data` (see [docs/data-format.md
 python -m http.server 5917 --bind 127.0.0.1
 ```
 
-Open <http://127.0.0.1:5917/>. The service worker is network-first, so a reload shows the latest files.
+Open <http://127.0.0.1:5917/>. The service worker serves files from a cache named after their content hash: after changing any app
+file run `npm run stamp` (a test fails if you forget), then reload twice (or use a private window).
 
 ## Tests
 

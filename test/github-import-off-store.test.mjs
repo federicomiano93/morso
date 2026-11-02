@@ -120,6 +120,21 @@ test('the same pasted item always gets the same id, so pasting twice cannot dupl
   assert.equal(parseClaudeBlock(JSON.stringify([{ ...item, id: 'mine' }]), { now: NOW }).entries[0].id, 'mine');
 });
 
+test('identical items in one block stay separate entries, and re-parsing gives the same ids', () => {
+  const block = JSON.stringify([item, item]);
+  const a = parseClaudeBlock(block, { now: NOW }).entries;
+  const b = parseClaudeBlock(block, { now: NOW }).entries;
+  assert.equal(a.length, 2);
+  assert.notEqual(a[0].id, a[1].id);
+  assert.deepEqual(a.map((e) => e.id), b.map((e) => e.id));
+});
+
+test('rejected raw items are returned so a file can keep them', () => {
+  const bad = { ...item, grams: 0 };
+  const r = parseClaudeBlock(JSON.stringify([item, bad]), { now: NOW });
+  assert.deepEqual(r.rejected, [bad]);
+});
+
 test('bad items are rejected one by one with plain messages; good ones still import', () => {
   const r = parseClaudeBlock(JSON.stringify([item, { ...item, grams: 0 }, { ...item, meal: 'brunch' }, { ...item, date: '2026-02-30' }, { ...item, name: '' }, { ...item, kcal: 'lots' }, { ...item, type: 'workout' }, 5]), { now: NOW });
   assert.equal(r.entries.length, 1);
@@ -147,6 +162,8 @@ test('offToFood converts nutriments, falls back from kJ, and flags missing value
   assert.equal(f.group, 'starches');
   assert.equal(f.incomplete, false);
   assert.equal(f.source, 'off');
+  assert.equal(f.id, 'off-123');
+  assert.equal(offToFood({ product_name: 'Same', code: '123' }).id, 'off-123');
 
   const kj = offToFood({ product_name: 'X', nutriments: { energy_100g: 418.4 } });
   assert.equal(kj.per100.kcal, 100);

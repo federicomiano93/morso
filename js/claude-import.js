@@ -40,7 +40,7 @@ function normalizeItem(raw, index, { defaultDate, now }) {
 
   const id = raw.id
     ? String(raw.id)
-    : hashId('claude', [date, meal, name.toLowerCase(), grams, kcal].join('|'));
+    : hashId('claude', [date, meal, name.toLowerCase(), grams, kcal, index].join('|'));
 
   return {
     entry: {
@@ -67,25 +67,29 @@ function normalizeItem(raw, index, { defaultDate, now }) {
 
 /**
  * Returns { entries, errors }. `entries` are ready to merge into the diary; `errors` are
- * plain-English messages (one per rejected item, or one for the whole text).
+ * plain-English messages (one per rejected item, or one for the whole text); `rejected` holds the raw
+ * items that were refused, so a file can be rewritten with only those.
  */
 export function parseClaudeBlock(text, { defaultDate, now = nowIso() } = {}) {
   let data;
   try {
     data = JSON.parse(stripFences(String(text || '')));
   } catch {
-    return { entries: [], errors: ['The text is not valid JSON. Paste exactly what Claude gave you.'] };
+    return { entries: [], rejected: [], errors: ['The text is not valid JSON. Paste exactly what Claude gave you.'] };
   }
   const list = Array.isArray(data) ? data : data && Array.isArray(data.entries) ? data.entries : null;
-  if (!list) return { entries: [], errors: ['No entries found. Expected a list, or { "entries": [ ... ] }.'] };
-  if (!list.length) return { entries: [], errors: ['The list is empty.'] };
+  if (!list) return { entries: [], rejected: [], errors: ['No entries found. Expected a list, or { "entries": [ ... ] }.'] };
+  if (!list.length) return { entries: [], rejected: [], errors: ['The list is empty.'] };
 
   const entries = [];
   const errors = [];
+  const rejected = [];
   list.forEach((raw, i) => {
     const r = normalizeItem(raw, i, { defaultDate, now });
-    if (r.error) errors.push(r.error);
-    else entries.push(r.entry);
+    if (r.error) {
+      errors.push(r.error);
+      rejected.push(raw);
+    } else entries.push(r.entry);
   });
-  return { entries, errors };
+  return { entries, rejected, errors };
 }

@@ -51,7 +51,8 @@ export function offToFood(p, { now = nowIso() } = {}) {
   };
   const serving = toNum(p.serving_quantity);
   return {
-    id: newId(),
+    // Stable per product, so logging the same product again reuses one library food.
+    id: p.code ? `off-${p.code}` : newId(),
     name: brand && !base.toLowerCase().includes(brand.toLowerCase()) ? `${base} (${brand})` : base,
     group: guessGroup(p.categories_tags),
     per100,

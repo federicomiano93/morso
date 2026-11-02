@@ -87,7 +87,7 @@ export function createSync({ store, github, today = () => dateStr(), clock = () 
     for (const f of files) {
       const file = await github.getFile(f.path);
       if (!file) continue;
-      const { entries, errors } = parseClaudeBlock(file.text, { defaultDate: today(), now: clock() });
+      const { entries, rejected, errors } = parseClaudeBlock(file.text, { defaultDate: today(), now: clock() });
       if (!entries.length) {
         result.importErrors.push(`${f.name}: ${errors[0] || 'nothing to import.'}`);
         continue; // left in place so Federico can see and fix it
@@ -99,7 +99,12 @@ export function createSync({ store, github, today = () => dateStr(), clock = () 
         result.imported += 1;
       }
       errors.forEach((m) => result.importErrors.push(`${f.name}: ${m}`));
-      await github.deleteFile(f.path, file.sha, `inbox: imported ${f.name}`);
+      if (rejected.length) {
+        // Keep what could not be imported in the file, so nothing Claude proposed disappears unseen.
+        await github.putFile(f.path, serialize({ entries: rejected }), file.sha, `inbox: ${rejected.length} item(s) of ${f.name} need fixing`);
+      } else {
+        await github.deleteFile(f.path, file.sha, `inbox: imported ${f.name}`);
+      }
     }
   }
 

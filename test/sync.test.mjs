@@ -123,6 +123,26 @@ test('an inbox entry the user deleted does not come back', async () => {
   assert.equal(store.getDay(DAY).entries[0].deleted, true);
 });
 
+test('a partly valid inbox file imports the good items and keeps only the rejected ones', async () => {
+  const inbox = JSON.stringify([
+    { date: DAY, meal: 'lunch', name: 'Soup', group: 'vegetables', grams: 300, kcal: 120 },
+    { date: DAY, meal: 'lunch', name: 'Mystery', group: 'other', kcal: 50 },
+  ]);
+  const { store, github, sync } = setup({ 'inbox/mixed.json': inbox });
+  const r = await sync.run();
+  assert.equal(r.imported, 1);
+  assert.equal(r.importErrors.length, 1);
+  assert.match(r.importErrors[0], /Mystery/);
+  const left = JSON.parse(github.files.get('inbox/mixed.json').text);
+  assert.deepEqual(left.entries.map((e) => e.name), ['Mystery']);
+  assert.equal(store.getDay(DAY).entries.length, 1);
+  // Next sync: nothing new imported, the problem is still reported, the file stays.
+  const r2 = await sync.run();
+  assert.equal(r2.imported, 0);
+  assert.equal(r2.importErrors.length, 1);
+  assert.ok(github.files.has('inbox/mixed.json'));
+});
+
 test('an unreadable inbox file is reported and left in place', async () => {
   const { github, sync } = setup({ 'inbox/bad.json': 'not json at all' });
   const r = await sync.run();
